@@ -10,7 +10,7 @@ From workspace: **Fabric Writeback Demo** (ID: `5720b110-927c-4145-a4a4-d214a309
 
 | Artifact | Type | Purpose |
 |----------|------|---------|
-| HRData | SQL Database | Central data store with Employees and NeedsWriteback tables |
+| HRData | SQL Database | Central data store with Employees table |
 | HRData | SQL Endpoint | Query endpoint for semantic model connection |
 | EmployeeWritebackFunctions | User-Defined Function | RESTful API for Power BI writeback |
 | Pipeline_IngestEmployees | Data Pipeline | Initial data load from on-prem via gateway |
@@ -24,8 +24,7 @@ From workspace: **Fabric Writeback Demo** (ID: `5720b110-927c-4145-a4a4-d214a309
 fabric-writeback-demo/
 ├── artifacts/
 │   ├── udf/
-│   │   ├── udf-corrected.py              # Basic UDF implementation
-│   │   └── udf-with-pipeline-trigger.py  # UDF with pipeline trigger (recommended)
+│   │   └── EmployeeWritebackFunctions.py  # Current UDF code
 │   ├── pipelines/
 │   │   └── pipeline-definition.json      # Writeback pipeline structure
 │   └── workspace-manifest.json           # Complete artifact inventory
@@ -34,9 +33,7 @@ fabric-writeback-demo/
 │   ├── 01-table-creation.sql                          # SQL Database schema setup
 │   ├── usp-update-employee-with-pipeline-trigger.sql  # On-prem stored procedure
 │   ├── update-merge-procedure-simple.sql              # Alternative merge logic
-│   ├── test-writeback.sql                             # Test writeback flow
-│   ├── cleanup-needswriteback-complete.sql            # Maintenance cleanup
-│   └── remove-needswriteback.sql                      # Reset staging table
+│   └── test-writeback.sql                             # Test writeback flow
 │
 ├── README.md                # Solution overview
 ├── DEPLOYMENT_GUIDE.md      # Step-by-step deployment
@@ -71,9 +68,8 @@ Open [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) for detailed step-by-step instru
 
 **Tables**:
 - **Employees** - Master employee data
-- **NeedsWriteback** - Staging table for changes awaiting sync to on-prem
 
-Create these in your Fabric SQL Database workspace item.
+Create this in your Fabric SQL Database workspace item.
 
 ---
 
@@ -112,7 +108,8 @@ def list_employees(sqlDB: fn.FabricSqlConnection) -> list:
 **Key Configuration**:
 - Connection alias: `HRData` (points to your Fabric SQL Database)
 - Stored procedure called: `usp_UpdateEmployee`
-- No direct pipeline triggering (pipeline runs separately or triggered by stored procedure)
+- Direct database update (no staging table)
+- No automatic pipeline triggering (use manual or scheduled trigger)
 
 **How to Call from Power BI**:
 ```dax
@@ -145,12 +142,12 @@ update_employee(
 **File**: `artifacts/pipelines/pipeline-definition.json`
 
 **Activities**:
-1. **Lookup** - Query `NeedsWriteback` for unprocessed records (`IsProcessed = 0`)
-2. **ForEach** - Iterate through each pending change
-3. **Stored Procedure** - Call `usp_UpdateEmployee` on on-prem SQL Server via gateway
-4. **Update** - Mark record as processed in `NeedsWriteback`
+1. **Copy Data** - Read employee data from Fabric SQL Database
+2. **Stored Procedure** - Call merge procedure on on-prem SQL Server via gateway
 
 **Gateway Connection**: Uses on-prem data gateway for secure connectivity
+
+**Trigger**: Manual or scheduled (no automatic triggering)
 
 **On-Premises Stored Procedure**:
 ```sql
@@ -214,36 +211,31 @@ Body:
 │  User Edits in Power BI      │
 │  (Employee Records Dashboard)│
 └──────────────┬───────────────┘
-               │ Click writeback button
+               │ Call UDF function
                ▼
 ┌──────────────────────────────┐
 │  UDF: EmployeeWritebackFunctions │
-│  (Fabric Function)           │
+│  update_employee()           │
 └──────────────┬───────────────┘
-               │ INSERT INTO NeedsWriteback
+               │ EXEC usp_UpdateEmployee
                ▼
 ┌──────────────────────────────┐
-│  HRData.NeedsWriteback       │
-│  (Staging Table)             │
-│  IsProcessed = 0             │
+│  HRData.Employees            │
+│  (Fabric SQL Database)       │
+│  Record Updated              │
 └──────────────┬───────────────┘
-               │ UDF triggers
+               │
                ▼
 ┌──────────────────────────────┐
+│  Manual/Scheduled Trigger    │
 │  Pipeline_Writeback_to_On-Prem│
 └──────────────┬───────────────┘
                │ Via on-prem gateway
                ▼
 ┌──────────────────────────────┐
 │  On-Premises SQL Server      │
-│  usp_UpdateEmployee          │
+│  usp_MergeEmployees          │
 │  (MERGE to Employees table)  │
-└──────────────┬───────────────┘
-               │ Success
-               ▼
-┌──────────────────────────────┐
-│  UPDATE NeedsWriteback       │
-│  SET IsProcessed = 1         │
 └──────────────────────────────┘
 ```
 
@@ -300,7 +292,7 @@ Design report to match your requirements:
 ```sql
 -- In Fabric SQL Database (HRData)
 SELECT * FROM INFORMATION_SCHEMA.TABLES;
--- Should see: Employees, NeedsWriteback
+-- Should see: Employees
 ```
 
 ### Test 2: Test UDF Endpoint
@@ -319,25 +311,19 @@ curl -X POST https://your-udf-endpoint/api/writeback \
 
 Expected response: `{"status": "success"}`
 
-### Test 3: Verify Staging Table
+### Test 3: Verify Update in Fabric
 ```sql
--- Check record inserted into staging
-SELECT * FROM NeedsWriteback WHERE IsProcessed = 0;
+-- Check record updated in Fabric SQL Database
+SELECT * FROM Employees WHERE EmployeeID = 1001;
 ```
 
-### Test 4: Test Pipeline Trigger
-1. Manually run `Pipeline_Writeback_to_On-Prem`
+### Test 4: Test Pipeline Sync
+1. **Manually run** `Pipeline_Writeback_to_On-Prem` from Fabric portal
 2. Check pipeline run history
 3. Verify on-prem database updated:
 ```sql
 -- On on-prem SQL Server
 SELECT * FROM Employees WHERE EmployeeID = 1001;
-```
-
-### Test 5: Verify Processing
-```sql
--- Check staging table marked as processed
-SELECT * FROM NeedsWriteback WHERE IsProcessed = 1;
 ```
 
 ---
@@ -369,20 +355,17 @@ SELECT * FROM NeedsWriteback WHERE IsProcessed = 1;
 - `NeedsWriteback` table for stuck records (IsProcessed = 0)
 
 ### Writeback Not Working End-to-End
-**Symptom**: Button click doesn't sync to on-prem  
+**Symptom**: UDF call doesn't sync to on-prem  
 **Debug Steps**:
 ```sql
--- 1. Check if UDF wrote to staging
-SELECT * FROM NeedsWriteback ORDER BY CreatedDate DESC;
+-- 1. Check if UDF updated Fabric database
+SELECT * FROM Employees ORDER BY LastModifiedDate DESC;
 
 -- 2. Check if pipeline ran
 -- (View in Fabric portal pipeline run history)
 
 -- 3. Check if on-prem updated
 -- (Query on-prem SQL Server Employees table)
-
--- 4. Check for errors
-SELECT * FROM NeedsWriteback WHERE IsProcessed = 0;
 ```
 
 ---

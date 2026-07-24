@@ -33,7 +33,6 @@ This solution enables **interactive data writeback** from Power BI reports to on
     │  Fabric SQL Database     │
     │  HRData                  │
     │  - Employees             │
-    │  - NeedsWriteback        │
     └──────────┬───────────────┘
                │
                ▼
@@ -52,18 +51,14 @@ This solution enables **interactive data writeback** from Power BI reports to on
     ┌──────────────────────────┐
     │  EmployeeWritebackFunctions│
     │  (UDF - Fabric Function) │
+    │  Updates Fabric SQL DB   │
     └──────────┬───────────────┘
-               │ Writes to
-               ▼
-    ┌──────────────────────────┐
-    │  NeedsWriteback Table    │
-    │  (Staging Changes)       │
-    └──────────┬───────────────┘
-               │ Triggers
+               │
                ▼
     ┌──────────────────────────┐
     │  Pipeline_Writeback_to_  │
     │  On-Prem                 │
+    │  (Manual Trigger)        │
     └──────────┬───────────────┘
                │ On-Premises Data Gateway
                ▼
@@ -95,7 +90,7 @@ This solution enables **interactive data writeback** from Power BI reports to on
 
 ### 1. SQL Database: **HRData**
 - Central data store in Microsoft Fabric
-- Tables: `Employees`, `NeedsWriteback`
+- Tables: `Employees`
 
 ### 2. User-Defined Function: **EmployeeWritebackFunctions**
 - Python functions callable from Power BI

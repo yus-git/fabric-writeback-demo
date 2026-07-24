@@ -47,28 +47,12 @@ Deploy a complete Power BI writeback solution using Microsoft Fabric User-Define
 ```sql
 -- See scripts/01-table-creation.sql
 
--- Employees table (main data)
+-- Employees table
 CREATE TABLE Employees (
     EmployeeID INT PRIMARY KEY,
-    FirstName NVARCHAR(50),
-    LastName NVARCHAR(50),
-    Department NVARCHAR(100),
-    Salary DECIMAL(18, 2),
-    HireDate DATE,
-    LastModified DATETIME DEFAULT GETDATE()
-);
-
--- NeedsWriteback table (staging for changes)
-CREATE TABLE NeedsWriteback (
-    RecordID INT IDENTITY(1,1) PRIMARY KEY,
-    EmployeeID INT,
-    FirstName NVARCHAR(50),
-    LastName NVARCHAR(50),
-    Department NVARCHAR(100),
-    Salary DECIMAL(18, 2),
-    IsProcessed BIT DEFAULT 0,
-    CreatedDate DATETIME DEFAULT GETDATE(),
-    ProcessedDate DATETIME NULL
+    EmployeeName NVARCHAR(255) NOT NULL,
+    LastModifiedDate DATETIME2 DEFAULT GETDATE(),
+    ModifiedBy NVARCHAR(100) DEFAULT SYSTEM_USER
 );
 ```
 
@@ -152,58 +136,28 @@ print(result)  # ✅ Successfully updated John Doe (ID: 1001) by user@company.co
 
 ### Step 5: Deploy Pipeline_Writeback_to_On-Prem
 
-**Purpose**: Sync changes from `NeedsWriteback` back to on-premises SQL Server
+**Purpose**: Sync employee data from Fabric SQL Database to on-premises SQL Server
 
 1. Create new Data Pipeline named **Pipeline_Writeback_to_On-Prem**
-2. Import definition from `artifacts/pipelines/pipeline-definition.json` (or build manually)
+2. **Configure manual or scheduled trigger** (no automatic triggering)
 
 **Pipeline Activities**:
 
-**Activity 1: Lookup Unprocessed Records**
+**Activity 1: Copy Data from Fabric to On-Prem**
 ```json
 {
-  "type": "Lookup",
-  "name": "GetUnprocessedChanges",
+  "type": "Copy",
+  "name": "SyncEmployees",
   "source": {
     "type": "SqlQuery",
-    "query": "SELECT * FROM NeedsWriteback WHERE IsProcessed = 0"
+    "query": "SELECT * FROM Employees",
+    "dataset": "HRData"
   },
-  "dataset": "HRData"
-}
-```
-
-**Activity 2: ForEach Record**
-```json
-{
-  "type": "ForEach",
-  "name": "ProcessEachChange",
-  "items": "@activity('GetUnprocessedChanges').output.value"
-}
-```
-
-**Activity 3: Stored Procedure (inside ForEach)**
-```json
-{
-  "type": "SqlServerStoredProcedure",
-  "name": "MergeToOnPrem",
-  "storedProcedureName": "usp_UpdateEmployee",
-  "parameters": {
-    "EmployeeID": "@item().EmployeeID",
-    "FirstName": "@item().FirstName",
-    "LastName": "@item().LastName",
-    "Department": "@item().Department",
-    "Salary": "@item().Salary"
-  },
-  "linkedService": "OnPremSQLServer"  // via gateway
-}
-```
-
-**Activity 4: Update Processed Flag**
-```json
-{
-  "type": "SqlQuery",
-  "name": "MarkAsProcessed",
-  "query": "UPDATE NeedsWriteback SET IsProcessed = 1, ProcessedDate = GETDATE() WHERE RecordID = @{item().RecordID}"
+  "sink": {
+    "type": "SqlServerStoredProcedure",
+    "storedProcedureName": "usp_MergeEmployees",
+    "linkedService": "OnPremSQLServer"
+  }
 }
 ```
 
@@ -212,12 +166,10 @@ print(result)  # ✅ Successfully updated John Doe (ID: 1001) by user@company.co
 
 ```sql
 -- See scripts/usp-update-employee-with-pipeline-trigger.sql
-CREATE PROCEDURE usp_UpdateEmployee
+CREATE PROCEDURE usp_MergeEmployees
     @EmployeeID INT,
-    @FirstName NVARCHAR(50),
-    @LastName NVARCHAR(50),
-    @Department NVARCHAR(100),
-    @Salary DECIMAL(18,2)
+    @EmployeeName NVARCHAR(255),
+    @ModifiedBy NVARCHAR(100)
 AS
 BEGIN
     MERGE Employees AS target
@@ -225,18 +177,21 @@ BEGIN
     ON target.EmployeeID = source.EmployeeID
     WHEN MATCHED THEN
         UPDATE SET
-            FirstName = @FirstName,
-            LastName = @LastName,
-            Department = @Department,
-            Salary = @Salary,
-            LastModified = GETDATE()
+            EmployeeName = @EmployeeName,
+            LastModifiedDate = GETDATE(),
+            ModifiedBy = @ModifiedBy
     WHEN NOT MATCHED THEN
-        INSERT (EmployeeID, FirstName, LastName, Department, Salary, HireDate)
-        VALUES (@EmployeeID, @FirstName, @LastName, @Department, @Salary, GETDATE());
+        INSERT (EmployeeID, EmployeeName, LastModifiedDate, ModifiedBy)
+        VALUES (@EmployeeID, @EmployeeName, GETDATE(), @ModifiedBy);
 END;
 ```
 
-5. Save pipeline and test with manual trigger
+5. **Trigger Options**:
+   - **Manual**: Trigger from Fabric portal after UDF updates
+   - **Scheduled**: Configure schedule trigger (e.g., every 15 minutes, hourly, daily)
+   - No automatic triggering from UDF
+
+6. Save pipeline and test with manual trigger
 
 ---
 
@@ -283,34 +238,33 @@ https://your-udf-endpoint.fabric.microsoft.com/api/writeback
 -- Check data loaded into Fabric
 SELECT COUNT(*) FROM HRData.dbo.Employees;
 
--- Verify empty staging table
-SELECT * FROM HRData.dbo.NeedsWriteback;
+-- View employee data
+SELECT * FROM HRData.dbo.Employees;
 ```
 
 ### Test 2: Test UDF Writeback
 1. Open **Employee Records Dashboard** in Power BI Service
-2. Edit an employee field
-3. Click writeback button
-4. Verify record appears in staging:
+2. Call UDF function to update an employee:
+
+```dax
+// In Power BI measure or button
+update_employee(1, "Jane Doe", USERPRINCIPALNAME())
+```
+
+3. Verify record updated in Fabric SQL Database:
 
 ```sql
-SELECT * FROM NeedsWriteback WHERE IsProcessed = 0;
+SELECT * FROM Employees WHERE EmployeeID = 1;
 ```
 
 ### Test 3: Test Pipeline Sync
-1. Manually trigger **Pipeline_Writeback_to_On-Prem**
+1. **Manually trigger** **Pipeline_Writeback_to_On-Prem** from Fabric portal
 2. Check pipeline run history (should succeed)
 3. Verify on-premises database was updated:
 
 ```sql
 -- On on-prem SQL Server
-SELECT * FROM Employees WHERE LastModified > DATEADD(minute, -5, GETDATE());
-```
-
-4. Confirm staging table marked as processed:
-
-```sql
-SELECT * FROM NeedsWriteback WHERE IsProcessed = 1;
+SELECT * FROM Employees WHERE LastModifiedDate > DATEADD(minute, -5, GETDATE());
 ```
 
 ---
@@ -320,21 +274,21 @@ SELECT * FROM NeedsWriteback WHERE IsProcessed = 1;
 ```
 1. User edits data in Power BI report
    ↓
-2. Button triggers HTTP POST to UDF endpoint
+2. Report calls UDF function: update_employee()
    ↓
-3. UDF inserts change into NeedsWriteback table
+3. UDF executes stored procedure on Fabric SQL Database
    ↓
-4. UDF triggers Pipeline_Writeback_to_On-Prem
+4. Fabric SQL Database Employees table updated
    ↓
-5. Pipeline reads unprocessed records
+5. Manual or scheduled trigger of Pipeline_Writeback_to_On-Prem
    ↓
-6. Pipeline calls stored procedure via gateway
+6. Pipeline reads from Fabric SQL Database
    ↓
-7. On-prem SQL Server updates via MERGE
+7. Pipeline calls stored procedure via gateway
    ↓
-8. Pipeline marks record as processed
+8. On-prem SQL Server updated via MERGE
    ↓
-9. Success response returned to user
+9. Success - data synced
 ```
 
 ---
@@ -356,11 +310,12 @@ SELECT * FROM NeedsWriteback WHERE IsProcessed = 1;
 **Solution**: Verify `usp_UpdateEmployee` exists on on-prem SQL Server with correct schema
 
 ### No Writeback Sync
-**Issue**: Changes in `NeedsWriteback` but not syncing  
+**Issue**: Changes in Fabric SQL Database but not syncing to on-prem  
 **Solution**:
-- Check if pipeline is triggered (review run history)
-- Verify `IsProcessed = 0` for pending records
-- Manually trigger pipeline to test
+- Manually trigger pipeline from Fabric portal
+- Check pipeline run history for errors
+- Verify gateway connectivity
+- Check on-prem stored procedure exists
 
 ### Gateway Issues
 **Issue**: Gateway offline or unreachable  
@@ -373,20 +328,19 @@ SELECT * FROM NeedsWriteback WHERE IsProcessed = 1;
 
 ## Maintenance
 
-### Cleanup Processed Records
-```sql
--- Remove old processed records (run periodically)
--- See scripts/cleanup-needswriteback-complete.sql
-DELETE FROM NeedsWriteback 
-WHERE IsProcessed = 1 
-  AND ProcessedDate < DATEADD(day, -30, GETDATE());
-```
+### Monitor Pipeline Runs
+- Check pipeline run history in Fabric portal
+- Review any failed runs
+- Monitor sync frequency (if scheduled)
 
-### Reset Staging Table
+### Data Integrity Checks
 ```sql
--- Clear all staging records (use carefully)
--- See scripts/remove-needswriteback.sql
-TRUNCATE TABLE NeedsWriteback;
+-- Compare record counts between Fabric and on-prem
+-- In Fabric SQL Database
+SELECT COUNT(*) AS FabricCount FROM Employees;
+
+-- In on-prem SQL Server
+SELECT COUNT(*) AS OnPremCount FROM Employees;
 ```
 
 ---

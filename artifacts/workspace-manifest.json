@@ -7,8 +7,8 @@
       "id": "ff4e35af-d4bd-4ffa-822a-0e649cbf9c7a",
       "name": "HRData",
       "type": "SQLDatabase",
-      "description": "Fabric SQL Database storing employee records and NeedsWriteback staging table",
-      "tables": ["Employees", "NeedsWriteback"],
+      "description": "Fabric SQL Database storing employee records",
+      "tables": ["Employees"],
       "deployment_notes": "Deploy first. Run scripts/01-table-creation.sql to create schema."
     },
     {
@@ -43,11 +43,11 @@
       "id": "1f32cf5a-09c5-4d57-8a13-6cb7780658aa",
       "name": "Pipeline_Writeback_to_On-Prem",
       "type": "DataPipeline",
-      "description": "Syncs writeback changes from NeedsWriteback staging table to on-premises SQL Server via gateway",
+      "description": "Syncs employee data from Fabric SQL Database to on-premises SQL Server via gateway (manual trigger)",
       "gateway_required": true,
       "definition_file": "artifacts/pipelines/pipeline-definition.json",
       "on_prem_stored_procedure": "usp_UpdateEmployee",
-      "deployment_notes": "Requires on-premises data gateway. Deploy stored procedure (scripts/usp-update-employee-with-pipeline-trigger.sql) to on-prem SQL Server. Configure pipeline to call stored procedure via gateway."
+      "deployment_notes": "Requires on-premises data gateway. Deploy stored procedure (scripts/usp-update-employee-with-pipeline-trigger.sql) to on-prem SQL Server. Configure pipeline with manual trigger."
     },
     {
       "id": "bc655bcd-d8b5-402b-bfc0-bb6e626421cf",
@@ -79,10 +79,10 @@
   "data_flow": [
     "1. On-Prem SQL → Gateway → Pipeline_IngestEmployees → HRData.Employees",
     "2. HRData.Employees → SQL Endpoint → Semantic Model → Employee Records Dashboard",
-    "3. User Edit in Dashboard → Button POST → EmployeeWritebackFunctions UDF",
-    "4. UDF → INSERT NeedsWriteback → Trigger Pipeline_Writeback_to_On-Prem",
-    "5. Pipeline → Gateway → usp_UpdateEmployee (on-prem) → UPDATE Employees",
-    "6. Pipeline → UPDATE NeedsWriteback SET IsProcessed = 1"
+    "3. User Edit in Dashboard → Call UDF update_employee() with employee data",
+    "4. UDF → EXEC usp_UpdateEmployee → UPDATE HRData.Employees table",
+    "5. Manual trigger Pipeline_Writeback_to_On-Prem (or scheduled)",
+    "6. Pipeline → Gateway → Read from HRData.Employees → Sync to on-prem SQL"
   ],
   "external_dependencies": [
     "On-premises data gateway (required for both pipelines)",
@@ -90,6 +90,8 @@
     "Stored procedure: usp_UpdateEmployee (on on-prem SQL Server)"
   ],
   "excluded_technologies": [
-    "Power Automate (not used in this solution)"
+    "Power Automate (not used in this solution)",
+    "NeedsWriteback staging table (not used)",
+    "Automatic pipeline triggering (manual trigger only)"
   ]
 }
