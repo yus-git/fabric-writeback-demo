@@ -148,17 +148,18 @@ This solution enables **interactive data writeback** from Power BI reports to on
 
 ---
 
-## Next Steps
+## 🚀 Getting Started
 
-### 🚀 Quick Start
-See **[WRITEBACK_SETUP_GUIDE.md](WRITEBACK_SETUP_GUIDE.md)** for step-by-step implementation
+### Documentation
+- **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)** - Complete step-by-step deployment instructions
+- **[CUSTOMER_GUIDE.md](CUSTOMER_GUIDE.md)** - How to replicate this solution in your environment
 
-### 📚 Detailed Documentation
+### Scripts
+- **[01-table-creation.sql](scripts/01-table-creation.sql)** - Complete database setup (tables + stored procedures)
+- **[test-writeback.sql](scripts/test-writeback.sql)** - Test UDF and writeback flow
 
-1. ✅ **[01-table-creation.sql](scripts/01-table-creation.sql)** - Create tables in both environments
-2. ✅ **[02-pipeline-ingest-config.md](scripts/02-pipeline-ingest-config.md)** - Configure ingestion pipeline
-3. 🔄 **[03-semantic-model-setup.md](scripts/03-semantic-model-setup.md)** - Semantic model overview
-4. 🔄 **[05-power-automate-writeback-setup.md](scripts/05-power-automate-writeback-setup.md)** - Power Automate flow + Power BI report
-5. 🔄 **[06-pipeline-syncback-implementation.md](scripts/06-pipeline-syncback-implementation.md)** - Sync-back pipeline to on-prem
-6. ⚡ **[test-writeback.sql](scripts/test-writeback.sql)** - Test writeback stored procedure
+### Artifacts
+- **[EmployeeWritebackFunctions.py](artifacts/udf/EmployeeWritebackFunctions.py)** - UDF code (3 functions)
+- **[pipeline-definition.json](artifacts/pipelines/pipeline-definition.json)** - Pipeline configuration
+- **[workspace-manifest.json](artifacts/workspace-manifest.json)** - Complete artifact inventory
 
