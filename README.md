@@ -1,90 +1,145 @@
-# Fabric SQL Database Writeback Solution
+# Power BI Writeback Solution with Fabric UDF
 
-> **Complete Microsoft Fabric solution demonstrating Power BI writeback functionality using User-Defined Functions (UDF), Data Pipelines, and SQL Database.**
+> **Microsoft Fabric solution demonstrating Power BI writeback using User-Defined Functions (UDF) and on-premises data gateway.**
 
 [![Fabric](https://img.shields.io/badge/Microsoft-Fabric-blue)](https://fabric.microsoft.com)
 [![Power BI](https://img.shields.io/badge/Power-BI-yellow)](https://powerbi.microsoft.com)
 
+## 🎯 Solution Overview
+
+This solution enables **interactive data writeback** from Power BI reports to on-premises SQL Server:
+1. Users view and edit employee records in the **Employee Records Dashboard**
+2. Edits trigger a **User-Defined Function (UDF)** that writes changes to Fabric SQL Database
+3. A **Data Pipeline** syncs changes to on-premises SQL Server via **on-premises data gateway**
+4. All changes are tracked in a staging table for auditing
+
+## Architecture
+
+```
+┌─────────────────────────────┐
+│   On-Premises SQL Server    │
+│   (Source Employee Data)    │
+└──────────────┬──────────────┘
+               │
+               │ On-Premises Data Gateway
+               ▼
+    ┌──────────────────────────┐
+    │  Pipeline_IngestEmployees│
+    │  (Initial Data Load)     │
+    └──────────┬───────────────┘
+               │
+               ▼
+    ┌──────────────────────────┐
+    │  Fabric SQL Database     │
+    │  HRData                  │
+    │  - Employees             │
+    │  - NeedsWriteback        │
+    └──────────┬───────────────┘
+               │
+               ▼
+    ┌──────────────────────────┐
+    │  Semantic Model          │
+    └──────────┬───────────────┘
+               │
+               ▼
+    ┌──────────────────────────┐
+    │  Power BI Report         │
+    │  Employee Records        │
+    │  Dashboard               │
+    └──────────┬───────────────┘
+               │ User Edits
+               ▼
+    ┌──────────────────────────┐
+    │  EmployeeWritebackFunctions│
+    │  (UDF - Fabric Function) │
+    └──────────┬───────────────┘
+               │ Writes to
+               ▼
+    ┌──────────────────────────┐
+    │  NeedsWriteback Table    │
+    │  (Staging Changes)       │
+    └──────────┬───────────────┘
+               │ Triggers
+               ▼
+    ┌──────────────────────────┐
+    │  Pipeline_Writeback_to_  │
+    │  On-Prem                 │
+    └──────────┬───────────────┘
+               │ On-Premises Data Gateway
+               ▼
+    ┌─────────────────────────┐
+    │  On-Premises SQL Server │
+    │  (Updated Employee Data)│
+    └─────────────────────────┘
+```
+
 ## 📦 Repository Contents
 
-- **`artifacts/`** - Exported Fabric artifact definitions (UDF, pipelines, SQL schemas)
-- **`scripts/`** - SQL scripts, PowerShell helpers, and configuration guides
-- **`docs/`** - Additional documentation
-- **Deployment guides** - Step-by-step setup instructions
+- **`artifacts/`** - Fabric artifact code and definitions
+  - `udf/` - User-Defined Function Python code
+  - `pipelines/` - Pipeline JSON definitions
+  - `workspace-manifest.json` - Complete artifact inventory
+  
+- **`scripts/`** - Essential SQL scripts
+  - `01-table-creation.sql` - Database schema setup
+  - `usp-update-employee-with-pipeline-trigger.sql` - Stored procedure for merges
+  - `test-writeback.sql` - Validation script
+  - Cleanup utilities
 
-## 🎯 Use Case
+- **Documentation**
+  - `README.md` - This file
+  - `DEPLOYMENT_GUIDE.md` - Step-by-step deployment
+  - `CUSTOMER_GUIDE.md` - Replication guide
 
-This solution enables **bidirectional data flow** between Power BI reports and on-premises SQL databases:
-1. Users view and edit employee data in Power BI
-2. Changes are captured via User-Defined Function (UDF)
-3. Data pipelines sync changes back to on-premises systems
-4. All changes are tracked and auditable
+## 🚀 Workspace Artifacts
 
-## Architecture Overview
+### 1. SQL Database: **HRData**
+- Central data store in Microsoft Fabric
+- Tables: `Employees`, `NeedsWriteback`
 
-```
-┌─────────────────────┐
-│  On-Prem SQL Server │
-│  (Employees Table)  │
-└──────────┬──────────┘
-           │
-           ▼
-    ┌──────────────────────┐
-    │ Pipeline 1: Ingest   │
-    │ (Copy Activity)      │
-    └──────────┬───────────┘
-               │
-               ▼
-    ┌──────────────────────┐
-    │ Fabric SQL Database  │
-    │ HRData.Employees     │
-    └──────────┬───────────┘
-               │
-               ▼
-    ┌──────────────────────┐
-    │ Semantic Model       │
-    │ + Power BI Report    │
-    │ (with Writeback UDF) │
-    └──────────┬───────────┘
-               │
-               ▼
-    ┌──────────────────────┐
-    │ Pipeline 2: Sync Back│
-    │ (Merge Activity)     │
-    └──────────┬───────────┘
-               │
-               ▼
-    ┌─────────────────────┐
-    │  On-Prem SQL Server │
-    │  (Merged Updates)   │
-    └─────────────────────┘
-```
+### 2. User-Defined Function: **EmployeeWritebackFunctions**
+- RESTful endpoint for Power BI writeback
+- Captures changes and writes to `NeedsWriteback`
+- Triggers sync pipeline
 
-## Workspace Information
-- **Workspace Name**: Fabric Writeback Demo
-- **SQL Database Name**: HRData
-- **Connection Method**: Direct connection (public IP/VPN)
+### 3. Pipelines
+- **Pipeline_IngestEmployees** - Initial data load from on-prem via gateway
+- **Pipeline_Writeback_to_On-Prem** - Syncs changes back via gateway
 
-## Implementation Checklist
+### 4. Semantic Model
+- Connects to HRData SQL endpoint
+- Powers the Power BI report
 
-### ✅ Prerequisites
-- [ ] On-prem SQL Server accessible (direct connection)
-- [ ] Fabric SQL Database "HRData" created in workspace "Fabric Writeback Demo"
-- [ ] Permissions: SQL Server admin, Fabric workspace admin
+### 5. Report: **Employee Records Dashboard**
+- Interactive Power BI report
+- Edit buttons trigger UDF for writeback
 
-### 📋 Step 1: Set Up Tables
-- [ ] Create Employees table in on-prem SQL Server
-- [ ] Create Employees table in Fabric SQL Database
-- [ ] Insert sample data
+## 🔑 Key Technologies
 
-### 🔄 Step 2: Pipeline 1 - Initial Ingestion
-- [ ] Create connection to on-prem SQL Server
-- [ ] Create Pipeline "IngestEmployees"
-- [ ] Configure Copy Activity
-- [ ] Test and validate data transfer
+- **Microsoft Fabric** - Cloud data platform
+- **Fabric SQL Database** - Cloud SQL storage
+- **User-Defined Functions (UDF)** - RESTful writeback endpoint
+- **Data Pipelines** - ETL orchestration
+- **On-Premises Data Gateway** - Secure connectivity to on-prem SQL Server
+- **Power BI** - Interactive reporting and writeback UI
 
-### 📊 Step 3: Semantic Model & Report
-- [ ] Create semantic model pointing to Fabric SQL DB
+## 🛠️ Prerequisites
+
+- Microsoft Fabric capacity (F2 or higher)
+- On-premises SQL Server
+- On-premises data gateway installed and configured
+- Power BI Premium or Premium Per User (PPU)
+
+## 📚 Quick Links
+
+- **Workspace ID**: `5720b110-927c-4145-a4a4-d214a30908f8`
+- [Deployment Guide](DEPLOYMENT_GUIDE.md) - Complete setup instructions
+- [Customer Replication Guide](CUSTOMER_GUIDE.md) - How to replicate this solution
+
+---
+
+**Last Updated**: 2026-07-24
+
 - [ ] Create writeback-enabled table (UDF)
 - [ ] Build Power BI report with edit capability
 - [ ] Test update functionality

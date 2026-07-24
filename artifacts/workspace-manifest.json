@@ -1,68 +1,90 @@
 {
   "workspace_id": "5720b110-927c-4145-a4a4-d214a30908f8",
   "workspace_name": "Fabric Writeback Demo",
+  "solution_architecture": "Power BI writeback using UDF and on-premises data gateway",
   "artifacts": [
-    {
-      "id": "ddd00706-f922-43ea-a193-65e2c0b3bf2b",
-      "name": "Employee Records Dashboard",
-      "type": "Report",
-      "description": "Interactive Power BI report with writeback capability for employee records",
-      "deployment_notes": "Deploy after semantic model. Configure UDF endpoint in button actions."
-    },
-    {
-      "id": "bc655bcd-d8b5-402b-bfc0-bb6e626421cf",
-      "name": "Semantic Model",
-      "type": "SemanticModel",
-      "description": "Data model connecting to HRData SQL endpoint",
-      "deployment_notes": "Create from HRData SQL endpoint. Configure relationships and measures. See scripts/03-semantic-model-setup.md"
-    },
     {
       "id": "ff4e35af-d4bd-4ffa-822a-0e649cbf9c7a",
       "name": "HRData",
       "type": "SQLDatabase",
-      "description": "Central SQL database storing employee records and writeback staging tables",
-      "deployment_notes": "Deploy first. Run scripts/01-table-creation.sql to create schema. Includes Employees and NeedsWriteback tables."
+      "description": "Fabric SQL Database storing employee records and NeedsWriteback staging table",
+      "tables": ["Employees", "NeedsWriteback"],
+      "deployment_notes": "Deploy first. Run scripts/01-table-creation.sql to create schema."
     },
     {
       "id": "32b92571-307a-42d9-9881-333089e6df22",
       "name": "HRData",
       "type": "SQLEndpoint",
-      "description": "SQL endpoint for querying HRData database",
-      "deployment_notes": "Automatically created with SQL Database. Use for semantic model connection."
-    },
-    {
-      "id": "55605d68-73d4-4873-8f17-8855cee07cc2",
-      "name": "Pipeline_IngestEmployees",
-      "type": "DataPipeline",
-      "description": "Initial data ingestion pipeline to load employee data into HRData",
-      "deployment_notes": "Configure source connection. See scripts/02-pipeline-ingest-config.md"
-    },
-    {
-      "id": "1f32cf5a-09c5-4d57-8a13-6cb7780658aa",
-      "name": "Pipeline_Writeback_to_On-Prem",
-      "type": "DataPipeline",
-      "description": "Syncs writeback changes from NeedsWriteback table to on-premises SQL Server",
-      "deployment_notes": "Requires on-premises gateway. Configure connection and stored procedure. See scripts/04-pipeline-syncback-config.md and artifacts/pipelines/pipeline-definition.json"
+      "description": "SQL endpoint for querying HRData database (automatically created)",
+      "deployment_notes": "Automatically created with SQL Database. Use as data source for Semantic Model."
     },
     {
       "id": "617fb022-83f0-4fd1-a7ee-6566595da361",
       "name": "EmployeeWritebackFunctions",
       "type": "UserDataFunction",
-      "description": "UDF that receives writeback requests from Power BI and inserts into NeedsWriteback staging table",
-      "deployment_notes": "Deploy UDF with code from artifacts/udf/udf-with-pipeline-trigger.py. Configure endpoint URL. Test with sample POST request. UDF also triggers Pipeline_Writeback_to_On-Prem."
+      "description": "RESTful API endpoint that receives writeback requests from Power BI, writes to NeedsWriteback, and triggers sync pipeline",
+      "code_file": "artifacts/udf/udf-with-pipeline-trigger.py",
+      "deployment_notes": "Deploy UDF code, configure workspace/database/pipeline IDs, test with sample POST request."
+    },
+    {
+      "id": "55605d68-73d4-4873-8f17-8855cee07cc2",
+      "name": "Pipeline_IngestEmployees",
+      "type": "DataPipeline",
+      "description": "Initial data ingestion from on-premises SQL Server to Fabric SQL Database",
+      "gateway_required": true,
+      "deployment_notes": "Configure on-premises data gateway connection to source SQL Server. Copy data from on-prem Employees table to HRData.Employees."
+    },
+    {
+      "id": "1f32cf5a-09c5-4d57-8a13-6cb7780658aa",
+      "name": "Pipeline_Writeback_to_On-Prem",
+      "type": "DataPipeline",
+      "description": "Syncs writeback changes from NeedsWriteback staging table to on-premises SQL Server via gateway",
+      "gateway_required": true,
+      "definition_file": "artifacts/pipelines/pipeline-definition.json",
+      "on_prem_stored_procedure": "usp_UpdateEmployee",
+      "deployment_notes": "Requires on-premises data gateway. Deploy stored procedure (scripts/usp-update-employee-with-pipeline-trigger.sql) to on-prem SQL Server. Configure pipeline to call stored procedure via gateway."
+    },
+    {
+      "id": "bc655bcd-d8b5-402b-bfc0-bb6e626421cf",
+      "name": "Semantic Model",
+      "type": "SemanticModel",
+      "description": "Data model connecting to HRData SQL endpoint for Power BI reporting",
+      "data_source": "HRData SQL Endpoint",
+      "deployment_notes": "Create semantic model from HRData SQL endpoint. Import Employees table. Configure measures and relationships."
+    },
+    {
+      "id": "ddd00706-f922-43ea-a193-65e2c0b3bf2b",
+      "name": "Employee Records Dashboard",
+      "type": "Report",
+      "description": "Interactive Power BI report with writeback buttons that trigger UDF",
+      "data_source": "Semantic Model",
+      "writeback_method": "Button actions POST to EmployeeWritebackFunctions UDF endpoint",
+      "deployment_notes": "Create report from Semantic Model. Add button visuals configured to POST to UDF endpoint with employee data."
     }
   ],
   "deployment_order": [
-    "HRData (SQLDatabase)",
-    "EmployeeWritebackFunctions (UDF)",
-    "Pipeline_IngestEmployees",
-    "Pipeline_Writeback_to_On-Prem",
-    "Semantic Model",
-    "Employee Records Dashboard"
+    "1. HRData (SQL Database) - Run table creation script",
+    "2. On-Premises Data Gateway - Install and configure",
+    "3. EmployeeWritebackFunctions (UDF) - Deploy function code",
+    "4. Pipeline_IngestEmployees - Initial data load from on-prem",
+    "5. Pipeline_Writeback_to_On-Prem - Deploy on-prem stored procedure and pipeline",
+    "6. Semantic Model - Connect to HRData SQL endpoint",
+    "7. Employee Records Dashboard - Configure writeback buttons to call UDF"
+  ],
+  "data_flow": [
+    "1. On-Prem SQL → Gateway → Pipeline_IngestEmployees → HRData.Employees",
+    "2. HRData.Employees → SQL Endpoint → Semantic Model → Employee Records Dashboard",
+    "3. User Edit in Dashboard → Button POST → EmployeeWritebackFunctions UDF",
+    "4. UDF → INSERT NeedsWriteback → Trigger Pipeline_Writeback_to_On-Prem",
+    "5. Pipeline → Gateway → usp_UpdateEmployee (on-prem) → UPDATE Employees",
+    "6. Pipeline → UPDATE NeedsWriteback SET IsProcessed = 1"
   ],
   "external_dependencies": [
-    "On-premises data gateway (for Pipeline_Writeback_to_On-Prem)",
-    "On-premises SQL Server (writeback destination)",
-    "Azure Key Vault (optional, for secure credential storage)"
+    "On-premises data gateway (required for both pipelines)",
+    "On-premises SQL Server (source and writeback destination)",
+    "Stored procedure: usp_UpdateEmployee (on on-prem SQL Server)"
+  ],
+  "excluded_technologies": [
+    "Power Automate (not used in this solution)"
   ]
 }

@@ -1,216 +1,418 @@
-# Customer Replication Guide
+# Customer Replication Guide - Power BI Writeback with Fabric UDF
 
 ## 🎯 Purpose
-This repository contains everything needed to replicate the **Fabric Writeback Demo** functionality in your own Microsoft Fabric workspace.
+This repository contains everything needed to replicate the **Power BI writeback solution** using Microsoft Fabric User-Defined Functions (UDF) and on-premises data gateway.
 
 ## 📋 What's Included
 
-### 1. **Artifacts** (`/artifacts/`)
-All exportable Fabric components with deployment metadata:
+### Fabric Workspace Artifacts
+From workspace: **Fabric Writeback Demo** (ID: `5720b110-927c-4145-a4a4-d214a30908f8`)
 
-- **`workspace-manifest.json`** - Complete artifact inventory with IDs and deployment order
-- **`udf/`** - User-Defined Function Python code
-  - `udf-corrected.py` - Basic UDF implementation
-  - `udf-with-pipeline-trigger.py` - UDF with pipeline orchestration (recommended)
-- **`pipelines/`** - Pipeline definitions
-  - `pipeline-definition.json` - Writeback-to-On-Prem pipeline structure
+| Artifact | Type | Purpose |
+|----------|------|---------|
+| HRData | SQL Database | Central data store with Employees and NeedsWriteback tables |
+| HRData | SQL Endpoint | Query endpoint for semantic model connection |
+| EmployeeWritebackFunctions | User-Defined Function | RESTful API for Power BI writeback |
+| Pipeline_IngestEmployees | Data Pipeline | Initial data load from on-prem via gateway |
+| Pipeline_Writeback_to_On-Prem | Data Pipeline | Sync changes back to on-prem via gateway |
+| Semantic Model | Semantic Model | Data model for Power BI report |
+| Employee Records Dashboard | Power BI Report | Interactive report with writeback buttons |
 
-### 2. **SQL Scripts** (`/scripts/`)
-All database setup and maintenance scripts:
+### Repository Structure
 
-- **Setup Scripts**:
-  - `01-table-creation.sql` - Creates Employees and NeedsWriteback tables
-  - `usp-update-employee-with-pipeline-trigger.sql` - Stored procedure for merging changes
-  
-- **Test & Validation**:
-  - `test-writeback.sql` - Validate writeback functionality
-  - `cleanup-test-tables.sql` - Clean up test data
-  
-- **Maintenance**:
-  - `cleanup-needswriteback-complete.sql` - Remove processed records
-  - `remove-needswriteback.sql` - Clear staging table
-  
-- **Helper Scripts**:
-  - `get-fabric-pipeline-ids.ps1` - Retrieve pipeline IDs after deployment
-  - `get-fabric-sql-endpoint.ps1` - Get SQL endpoint connection strings
+```
+fabric-writeback-demo/
+├── artifacts/
+│   ├── udf/
+│   │   ├── udf-corrected.py              # Basic UDF implementation
+│   │   └── udf-with-pipeline-trigger.py  # UDF with pipeline trigger (recommended)
+│   ├── pipelines/
+│   │   └── pipeline-definition.json      # Writeback pipeline structure
+│   └── workspace-manifest.json           # Complete artifact inventory
+│
+├── scripts/
+│   ├── 01-table-creation.sql                          # SQL Database schema setup
+│   ├── usp-update-employee-with-pipeline-trigger.sql  # On-prem stored procedure
+│   ├── update-merge-procedure-simple.sql              # Alternative merge logic
+│   ├── test-writeback.sql                             # Test writeback flow
+│   ├── cleanup-needswriteback-complete.sql            # Maintenance cleanup
+│   └── remove-needswriteback.sql                      # Reset staging table
+│
+├── README.md                # Solution overview
+├── DEPLOYMENT_GUIDE.md      # Step-by-step deployment
+└── CUSTOMER_GUIDE.md        # This file
+```
 
-### 3. **Configuration Guides** (`/scripts/`)
+---
 
-- `02-pipeline-ingest-config.md` - Configure initial data ingestion
-- `03-semantic-model-setup.md` - Set up the semantic model
-- `04-pipeline-syncback-config.md` - Configure writeback pipeline
-- `06-pipeline-syncback-implementation.md` - Detailed pipeline implementation
+## 🚀 Quick Start
 
-### 4. **Deployment Documentation**
-
-- **`DEPLOYMENT_GUIDE.md`** - Complete step-by-step deployment instructions
-- **`QUICK_START.md`** - Fast-track setup for experienced users
-- **`WRITEBACK_SETUP_GUIDE.md`** - Detailed writeback configuration
-- **`DEMO_CHECKLIST.md`** - Pre-demo validation checklist
-- **`AUTOMATED_DEMO_SETUP.md`** - Automated setup scripts
-- **`OPDG_MIGRATION_GUIDE.md`** - On-premises data gateway migration
-
-## 🚀 Quick Start for Customers
-
-### Step 1: Clone This Repository
+### Step 1: Clone Repository
 ```bash
 git clone https://github.com/yus-git/fabric-writeback-demo.git
 cd fabric-writeback-demo
 ```
 
-### Step 2: Review Artifact Manifest
-```bash
-cat artifacts/workspace-manifest.json
-```
-This shows all 7 artifacts and their deployment order.
+### Step 2: Review Architecture
+See [README.md](README.md) for the complete architecture diagram showing:
+- On-premises SQL Server → Gateway → Fabric SQL Database
+- Power BI Report → UDF → Staging Table → Pipeline → Gateway → On-prem SQL Server
 
 ### Step 3: Follow Deployment Guide
-Open `DEPLOYMENT_GUIDE.md` and follow these sections in order:
-1. Prerequisites
-2. Create Fabric Workspace
-3. Deploy SQL Database (HRData)
-4. Deploy User-Defined Function
-5. Deploy Data Pipelines
-6. Deploy Semantic Model
-7. Deploy Power BI Report
+Open [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md) for detailed step-by-step instructions
 
-### Step 4: Test Writeback Flow
-```sql
--- Run test script
--- See scripts/test-writeback.sql
-```
+---
 
 ## 🔑 Key Components to Replicate
 
-### 1. SQL Database Schema
+### 1. Fabric SQL Database (HRData)
+
 **File**: `scripts/01-table-creation.sql`
 
 **Tables**:
-- `Employees` - Master employee records
-- `NeedsWriteback` - Staging table for changes awaiting sync
+- **Employees** - Master employee data
+- **NeedsWriteback** - Staging table for changes awaiting sync to on-prem
+
+Create these in your Fabric SQL Database workspace item.
+
+---
 
 ### 2. User-Defined Function (UDF)
+
 **File**: `artifacts/udf/udf-with-pipeline-trigger.py`
 
-**Functionality**:
-- Receives HTTP POST from Power BI writeback button
-- Parses employee change data (ID, Name, Department, Salary, etc.)
-- Inserts into `NeedsWriteback` staging table
-- Triggers `Pipeline_Writeback_to_On-Prem`
-- Returns success/error response
+**Purpose**: RESTful API endpoint that receives writeback requests from Power BI
 
-**Key Configuration**:
+**Key Functionality**:
 ```python
-# Update these with your values
-SQL_DATABASE_CONNECTION = "your-hrdata-connection-string"
-PIPELINE_ID = "your-pipeline-id"
-WORKSPACE_ID = "your-workspace-id"
+def writeback_handler(request):
+    # 1. Parse employee data from Power BI request
+    employee_data = request.json()
+    
+    # 2. Insert into NeedsWriteback staging table
+    insert_to_staging(employee_data)
+    
+    # 3. Trigger Pipeline_Writeback_to_On-Prem
+    trigger_pipeline()
+    
+    # 4. Return success response
+    return {"status": "success"}
 ```
 
-### 3. Writeback Pipeline
+**Configuration Required**:
+- Update `WORKSPACE_ID` with your workspace
+- Update `SQL_DATABASE_NAME` to your Fabric SQL Database name
+- Update `PIPELINE_NAME` to match your writeback pipeline
+
+---
+
+### 3. On-Premises Data Gateway
+
+**Required for**:
+- Pipeline_IngestEmployees (load data from on-prem to Fabric)
+- Pipeline_Writeback_to_On-Prem (sync changes from Fabric to on-prem)
+
+**Setup Steps**:
+1. Install gateway on a server with access to on-prem SQL Server
+2. Register gateway in Fabric portal
+3. Create connection to on-prem SQL Server
+4. Use in pipeline configurations
+
+---
+
+### 4. Pipeline_Writeback_to_On-Prem
+
 **File**: `artifacts/pipelines/pipeline-definition.json`
 
 **Activities**:
-1. **Lookup**: Query `NeedsWriteback` for unprocessed records
-2. **ForEach**: Iterate through pending changes
-3. **Stored Procedure**: Execute merge on target database
-4. **Update**: Mark records as processed
+1. **Lookup** - Query `NeedsWriteback` for unprocessed records (`IsProcessed = 0`)
+2. **ForEach** - Iterate through each pending change
+3. **Stored Procedure** - Call `usp_UpdateEmployee` on on-prem SQL Server via gateway
+4. **Update** - Mark record as processed in `NeedsWriteback`
 
-**Required Configuration**:
-- Source: Fabric SQL Database (HRData)
-- Destination: On-premises SQL Server (via Gateway)
-- Linked Service: On-premises SQL connection
-- Stored Procedure: `usp_UpdateEmployee` (see scripts)
+**Gateway Connection**: Uses on-prem data gateway for secure connectivity
 
-### 4. Power BI Report Setup
-**Configuration Steps**:
-1. Create report from Semantic Model
-2. Add table/matrix visual with employee data
-3. Add custom button with writeback action
-4. Configure button to call UDF endpoint:
+**On-Premises Stored Procedure**:
+```sql
+-- File: scripts/usp-update-employee-with-pipeline-trigger.sql
+CREATE PROCEDURE usp_UpdateEmployee
+    @EmployeeID INT,
+    @FirstName NVARCHAR(50),
+    @LastName NVARCHAR(50),
+    @Department NVARCHAR(100),
+    @Salary DECIMAL(18,2)
+AS
+BEGIN
+    -- MERGE logic to insert or update employee
+    MERGE Employees AS target
+    USING (SELECT @EmployeeID AS EmployeeID) AS source
+    ON target.EmployeeID = source.EmployeeID
+    WHEN MATCHED THEN UPDATE SET ...
+    WHEN NOT MATCHED THEN INSERT ...
+END;
 ```
-Action: Web URL
-URL: https://your-udf-endpoint.fabric.microsoft.com/api/writeback
+
+Deploy this stored procedure to your on-premises SQL Server.
+
+---
+
+### 5. Power BI Report with Writeback
+
+**Report**: Employee Records Dashboard
+
+**Writeback Configuration**:
+1. Add button visual for each editable field
+2. Set button action to **Web URL**
+3. Configure to POST to UDF endpoint:
+   ```
+   https://your-udf-endpoint.fabric.microsoft.com/api/writeback
+   ```
+4. Pass parameters from selected row (EmployeeID, field values)
+
+**Example Button Action**:
+```
+Action Type: Web URL
+URL: https://<your-udf-endpoint>/api/writeback
 Method: POST
 Headers: Authorization: Bearer <token>
-Body: { "EmployeeID": [selected value], "Field": [field name], "Value": [new value] }
+Body: 
+{
+  "EmployeeID": [EmployeeID from selection],
+  "FirstName": [FirstName],
+  "LastName": [LastName],
+  "Department": [Department],
+  "Salary": [Salary]
+}
 ```
 
-## 📊 Architecture Flow
+---
+
+## 📊 End-to-End Writeback Flow
 
 ```
-Power BI Report (Edit)
-    ↓ HTTP POST
-User-Defined Function (UDF)
-    ↓ INSERT
-NeedsWriteback Table (SQL Database)
-    ↓ TRIGGER
-Pipeline_Writeback_to_On-Prem
-    ↓ MERGE
-On-Premises SQL Server
-    ↓ UPDATE
-NeedsWriteback.IsProcessed = 1
+┌──────────────────────────────┐
+│  User Edits in Power BI      │
+│  (Employee Records Dashboard)│
+└──────────────┬───────────────┘
+               │ Click writeback button
+               ▼
+┌──────────────────────────────┐
+│  UDF: EmployeeWritebackFunctions │
+│  (Fabric Function)           │
+└──────────────┬───────────────┘
+               │ INSERT INTO NeedsWriteback
+               ▼
+┌──────────────────────────────┐
+│  HRData.NeedsWriteback       │
+│  (Staging Table)             │
+│  IsProcessed = 0             │
+└──────────────┬───────────────┘
+               │ UDF triggers
+               ▼
+┌──────────────────────────────┐
+│  Pipeline_Writeback_to_On-Prem│
+└──────────────┬───────────────┘
+               │ Via on-prem gateway
+               ▼
+┌──────────────────────────────┐
+│  On-Premises SQL Server      │
+│  usp_UpdateEmployee          │
+│  (MERGE to Employees table)  │
+└──────────────┬───────────────┘
+               │ Success
+               ▼
+┌──────────────────────────────┐
+│  UPDATE NeedsWriteback       │
+│  SET IsProcessed = 1         │
+└──────────────────────────────┘
 ```
 
-## 🔧 Customization Points
+---
 
-### For Your Environment:
-1. **SQL Schema**: Modify `01-table-creation.sql` for your table structure
-2. **UDF Logic**: Customize `udf-with-pipeline-trigger.py` for your business rules
-3. **Pipeline Mappings**: Update pipeline to match your column names
-4. **Stored Procedure**: Adapt merge logic in `usp-update-employee-with-pipeline-trigger.sql`
+## 🔧 Customization for Your Environment
 
-### Connection Strings to Update:
-- SQL Database endpoint (HRData)
-- On-premises SQL Server connection
-- Gateway configuration
-- UDF authentication tokens
+### SQL Schema
+Modify `scripts/01-table-creation.sql` to match your table structure:
+- Add/remove columns
+- Change data types
+- Adjust constraints
 
-## 📞 Support & Troubleshooting
+### UDF Logic
+Customize `artifacts/udf/udf-with-pipeline-trigger.py`:
+- Add validation rules
+- Implement business logic
+- Add logging/error handling
 
-### Common Issues:
+### Pipeline Mappings
+Update pipeline to match your column names and business rules:
+- Modify lookup query
+- Adjust stored procedure parameters
+- Add error handling activities
 
-**UDF Not Responding**
-- Verify UDF is published and active
-- Check authentication tokens
-- Review UDF execution logs in Fabric portal
+### Power BI Report
+Design report to match your requirements:
+- Custom visualizations
+- Additional fields
+- Conditional writeback logic
 
-**Pipeline Fails to Trigger**
-- Verify pipeline ID in UDF code
-- Check workspace permissions
-- Ensure service principal has pipeline execute permissions
+---
 
-**Writeback Not Syncing**
-- Query `NeedsWriteback` for stuck records
-- Check gateway connectivity
-- Review pipeline run history
-- Verify stored procedure permissions
+## ⚙️ Connection Strings to Update
 
-### Debug Scripts:
+1. **UDF Configuration**:
+   - `WORKSPACE_ID` - Your Fabric workspace ID
+   - `SQL_DATABASE_NAME` - Your Fabric SQL Database name
+   - `PIPELINE_NAME` - Your writeback pipeline name
+
+2. **Gateway Configuration**:
+   - On-prem SQL Server connection string
+   - SQL authentication credentials (stored in gateway)
+
+3. **Power BI Report**:
+   - UDF endpoint URL
+   - Authentication token/service principal
+
+---
+
+## 🧪 Testing Your Deployment
+
+### Test 1: Verify Tables Created
 ```sql
--- Check pending records
-SELECT * FROM NeedsWriteback WHERE IsProcessed = 0;
-
--- Check processed records
-SELECT * FROM NeedsWriteback WHERE IsProcessed = 1 ORDER BY ProcessedDate DESC;
-
--- Get recent errors
-SELECT * FROM NeedsWriteback WHERE ErrorMessage IS NOT NULL;
+-- In Fabric SQL Database (HRData)
+SELECT * FROM INFORMATION_SCHEMA.TABLES;
+-- Should see: Employees, NeedsWriteback
 ```
+
+### Test 2: Test UDF Endpoint
+```bash
+curl -X POST https://your-udf-endpoint/api/writeback \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token>" \
+  -d '{
+    "EmployeeID": 1001,
+    "FirstName": "Test",
+    "LastName": "User",
+    "Department": "IT",
+    "Salary": 65000
+  }'
+```
+
+Expected response: `{"status": "success"}`
+
+### Test 3: Verify Staging Table
+```sql
+-- Check record inserted into staging
+SELECT * FROM NeedsWriteback WHERE IsProcessed = 0;
+```
+
+### Test 4: Test Pipeline Trigger
+1. Manually run `Pipeline_Writeback_to_On-Prem`
+2. Check pipeline run history
+3. Verify on-prem database updated:
+```sql
+-- On on-prem SQL Server
+SELECT * FROM Employees WHERE EmployeeID = 1001;
+```
+
+### Test 5: Verify Processing
+```sql
+-- Check staging table marked as processed
+SELECT * FROM NeedsWriteback WHERE IsProcessed = 1;
+```
+
+---
+
+## 🔍 Troubleshooting
+
+### UDF Issues
+**Symptom**: UDF returns error or no response  
+**Check**:
+- UDF deployment status in Fabric portal
+- UDF logs for errors
+- SQL Database connection permissions
+- Request payload format
+
+### Gateway Issues
+**Symptom**: Pipeline fails with gateway error  
+**Check**:
+- Gateway service running
+- Gateway connection healthy in Fabric
+- Network connectivity from gateway to SQL Server
+- SQL authentication credentials valid
+
+### Pipeline Failures
+**Symptom**: Pipeline completes but on-prem not updated  
+**Check**:
+- Stored procedure exists on on-prem SQL Server
+- Stored procedure permissions
+- Pipeline run history for detailed errors
+- `NeedsWriteback` table for stuck records (IsProcessed = 0)
+
+### Writeback Not Working End-to-End
+**Symptom**: Button click doesn't sync to on-prem  
+**Debug Steps**:
+```sql
+-- 1. Check if UDF wrote to staging
+SELECT * FROM NeedsWriteback ORDER BY CreatedDate DESC;
+
+-- 2. Check if pipeline ran
+-- (View in Fabric portal pipeline run history)
+
+-- 3. Check if on-prem updated
+-- (Query on-prem SQL Server Employees table)
+
+-- 4. Check for errors
+SELECT * FROM NeedsWriteback WHERE IsProcessed = 0;
+```
+
+---
+
+## 🛡️ Security Best Practices
+
+1. **Authentication**
+   - Use Fabric service principal for UDF
+   - Store credentials in Azure Key Vault
+   - Enable managed identity where possible
+
+2. **Gateway Security**
+   - Install gateway on dedicated secure server
+   - Use Windows authentication for SQL Server
+   - Restrict network access to gateway machine
+
+3. **SQL Permissions**
+   - Grant minimal required permissions
+   - Use separate service accounts for read/write
+   - Enable auditing on sensitive tables
+
+4. **Data Privacy**
+   - Apply Row-Level Security (RLS) in semantic model
+   - Encrypt sensitive columns
+   - Audit all writeback operations
+
+---
 
 ## 📚 Additional Resources
 
-- [Microsoft Fabric Documentation](https://learn.microsoft.com/fabric/)
-- [User-Defined Functions Guide](https://learn.microsoft.com/fabric/data-engineering/user-defined-functions)
-- [Data Pipelines Documentation](https://learn.microsoft.com/fabric/data-factory/)
-- [Power BI Writeback Features](https://learn.microsoft.com/power-bi/create-reports/)
+- **Microsoft Fabric**: https://learn.microsoft.com/fabric/
+- **On-Premises Data Gateway**: https://learn.microsoft.com/data-integration/gateway/
+- **User-Defined Functions**: https://learn.microsoft.com/fabric/data-engineering/user-defined-functions
+- **Power BI Writeback**: https://learn.microsoft.com/power-bi/
 
-## 📝 License
-This solution is provided as-is for demonstration and replication purposes.
+---
+
+## 📝 Summary
+
+This solution provides a **production-ready Power BI writeback implementation** using:
+- ✅ Fabric SQL Database for cloud storage
+- ✅ User-Defined Functions for writeback API
+- ✅ On-premises data gateway for secure connectivity
+- ✅ Data pipelines for automated synchronization
+- ✅ Power BI for interactive reporting
+
+**Clone this repo, follow the deployment guide, and customize for your use case!**
 
 ---
 
 **Repository**: https://github.com/yus-git/fabric-writeback-demo  
-**Workspace**: Fabric Writeback Demo  
 **Workspace ID**: 5720b110-927c-4145-a4a4-d214a30908f8  
 **Last Updated**: 2026-07-24
