@@ -30,10 +30,8 @@ fabric-writeback-demo/
 │   └── workspace-manifest.json           # Complete artifact inventory
 │
 ├── scripts/
-│   ├── 01-table-creation.sql                          # SQL Database schema setup
-│   ├── usp-update-employee-with-pipeline-trigger.sql  # On-prem stored procedure
-│   ├── update-merge-procedure-simple.sql              # Alternative merge logic
-│   └── test-writeback.sql                             # Test writeback flow
+│   ├── 01-table-creation.sql  # Complete schema setup (tables + stored procedures)
+│   └── test-writeback.sql     # Test writeback flow
 │
 ├── README.md                # Solution overview
 ├── DEPLOYMENT_GUIDE.md      # Step-by-step deployment
@@ -151,7 +149,7 @@ update_employee(
 
 **On-Premises Stored Procedure**:
 ```sql
--- File: scripts/usp-update-employee-with-pipeline-trigger.sql
+-- File: scripts/01-table-creation.sql (PART C)
 CREATE PROCEDURE usp_UpdateEmployee
     @EmployeeID INT,
     @FirstName NVARCHAR(50),

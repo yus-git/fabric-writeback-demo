@@ -46,8 +46,8 @@
       "description": "Syncs employee data from Fabric SQL Database to on-premises SQL Server via gateway (manual trigger)",
       "gateway_required": true,
       "definition_file": "artifacts/pipelines/pipeline-definition.json",
-      "on_prem_stored_procedure": "usp_UpdateEmployee",
-      "deployment_notes": "Requires on-premises data gateway. Deploy stored procedure (scripts/usp-update-employee-with-pipeline-trigger.sql) to on-prem SQL Server. Configure pipeline with manual trigger."
+      "on_prem_stored_procedure": "usp_MergeEmployees",
+      "deployment_notes": "Requires on-premises data gateway. Deploy stored procedure from scripts/01-table-creation.sql (PART C) to on-prem SQL Server. Configure pipeline with manual trigger."
     },
     {
       "id": "bc655bcd-d8b5-402b-bfc0-bb6e626421cf",

@@ -165,7 +165,7 @@ print(result)  # ✅ Successfully updated John Doe (ID: 1001) by user@company.co
 4. **Create stored procedure** on on-prem SQL Server:
 
 ```sql
--- See scripts/usp-update-employee-with-pipeline-trigger.sql
+-- See scripts/01-table-creation.sql (PART C)
 CREATE PROCEDURE usp_MergeEmployees
     @EmployeeID INT,
     @EmployeeName NVARCHAR(255),
