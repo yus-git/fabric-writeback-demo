@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+*.egg-info/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Fabric
+.platform
+.pbi/
+*.pbix
+*.pbip
+
+# Credentials and secrets
+*.env
+.env.local
+secrets/
+credentials/
+*.key
+*.pem
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Temp files
+*.tmp
+*.bak
+~$*
+
+# Azure CLI
+.azure/
+
+# Git
+.git/
