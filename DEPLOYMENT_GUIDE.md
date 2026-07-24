@@ -107,42 +107,46 @@ CREATE TABLE NeedsWriteback (
 
 ### Step 4: Deploy User-Defined Function
 
-**Purpose**: RESTful API endpoint that receives writeback requests from Power BI
+**Purpose**: Provides callable functions for Power BI writeback
 
 1. Create new **User Data Function** item named **EmployeeWritebackFunctions**
-2. Copy code from `artifacts/udf/udf-with-pipeline-trigger.py`
-3. Update configuration variables:
+2. Copy code from `artifacts/udf/EmployeeWritebackFunctions.py`
+3. **Configure SQL Database connection**:
+   - Connection alias: `HRData`
+   - Points to your Fabric SQL Database
 
+4. **Deploy the UDF** and test the functions
+
+**UDF Functions**:
+
+**1. update_employee()** - Main writeback function
 ```python
-# Update these values
-WORKSPACE_ID = "5720b110-927c-4145-a4a4-d214a30908f8"  # Your workspace
-SQL_DATABASE_NAME = "HRData"
-PIPELINE_NAME = "Pipeline_Writeback_to_On-Prem"
+update_employee(
+    employeeId: int,      # Employee ID to update
+    employeeName: str,    # New employee name
+    modifiedBy: str       # User email (use USERPRINCIPALNAME() in Power BI)
+)
 ```
-
-4. **Deploy the UDF** and note the endpoint URL
-5. **Test** with a sample POST request:
-
-```json
-POST https://your-udf-endpoint.fabric.microsoft.com/api/writeback
-Content-Type: application/json
-Authorization: Bearer <token>
-
-{
-  "EmployeeID": 1001,
-  "FirstName": "John",
-  "LastName": "Doe",
-  "Department": "Engineering",
-  "Salary": 75000
-}
-```
-
-**UDF Functionality**:
-- Receives employee change data from Power BI
 - Validates input
-- Inserts into `NeedsWriteback` staging table
-- Triggers `Pipeline_Writeback_to_On-Prem`
-- Returns success/error status
+- Calls stored procedure `usp_UpdateEmployee` on Fabric SQL Database
+- Returns success/error message with emoji indicators
+
+**2. get_employee_info()** - Retrieve employee details
+```python
+get_employee_info(employeeId: int)
+```
+
+**3. list_employees()** - List all employees
+```python
+list_employees()  # Returns list of employee dictionaries
+```
+
+**Test the UDF**:
+```python
+# From Fabric notebook or Power BI
+result = update_employee(1001, "John Doe", "user@company.com")
+print(result)  # ✅ Successfully updated John Doe (ID: 1001) by user@company.com
+```
 
 ---
 

@@ -22,9 +22,14 @@
       "id": "617fb022-83f0-4fd1-a7ee-6566595da361",
       "name": "EmployeeWritebackFunctions",
       "type": "UserDataFunction",
-      "description": "RESTful API endpoint that receives writeback requests from Power BI, writes to NeedsWriteback, and triggers sync pipeline",
-      "code_file": "artifacts/udf/udf-with-pipeline-trigger.py",
-      "deployment_notes": "Deploy UDF code, configure workspace/database/pipeline IDs, test with sample POST request."
+      "description": "User-defined functions for employee writeback: update_employee(), get_employee_info(), and list_employees()",
+      "code_file": "artifacts/udf/EmployeeWritebackFunctions.py",
+      "functions": [
+        "update_employee(employeeId, employeeName, modifiedBy) - Main writeback function called from Power BI",
+        "get_employee_info(employeeId) - Retrieve employee details",
+        "list_employees() - List all employees"
+      ],
+      "deployment_notes": "Deploy UDF code to Fabric workspace. Configure connection alias 'HRData' to point to your SQL Database. Call update_employee() from Power BI using USERPRINCIPALNAME() for modifiedBy parameter."
     },
     {
       "id": "55605d68-73d4-4873-8f17-8855cee07cc2",

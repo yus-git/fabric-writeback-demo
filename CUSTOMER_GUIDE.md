@@ -78,31 +78,51 @@ Create these in your Fabric SQL Database workspace item.
 ---
 
 ### 2. User-Defined Function (UDF)
+**File**: `artifacts/udf/EmployeeWritebackFunctions.py`
 
-**File**: `artifacts/udf/udf-with-pipeline-trigger.py`
+**Functions Provided**:
 
-**Purpose**: RESTful API endpoint that receives writeback requests from Power BI
-
-**Key Functionality**:
+**1. update_employee()** - Main writeback function
 ```python
-def writeback_handler(request):
-    # 1. Parse employee data from Power BI request
-    employee_data = request.json()
-    
-    # 2. Insert into NeedsWriteback staging table
-    insert_to_staging(employee_data)
-    
-    # 3. Trigger Pipeline_Writeback_to_On-Prem
-    trigger_pipeline()
-    
-    # 4. Return success response
-    return {"status": "success"}
+@udf.connection(argName="sqlDB", alias="HRData")
+@udf.function()
+def update_employee(sqlDB: fn.FabricSqlConnection, 
+                   employeeId: int, 
+                   employeeName: str, 
+                   modifiedBy: str) -> str:
+    # Validates input
+    # Calls stored procedure: EXEC dbo.usp_UpdateEmployee
+    # Returns success/error message with emoji
 ```
 
-**Configuration Required**:
-- Update `WORKSPACE_ID` with your workspace
-- Update `SQL_DATABASE_NAME` to your Fabric SQL Database name
-- Update `PIPELINE_NAME` to match your writeback pipeline
+**2. get_employee_info()** - Retrieve employee data
+```python
+def get_employee_info(sqlDB: fn.FabricSqlConnection, 
+                      employeeId: int) -> str:
+    # Queries employee information
+    # Returns formatted employee details
+```
+
+**3. list_employees()** - List all employees
+```python
+def list_employees(sqlDB: fn.FabricSqlConnection) -> list:
+    # Returns list of all employees as dictionaries
+```
+
+**Key Configuration**:
+- Connection alias: `HRData` (points to your Fabric SQL Database)
+- Stored procedure called: `usp_UpdateEmployee`
+- No direct pipeline triggering (pipeline runs separately or triggered by stored procedure)
+
+**How to Call from Power BI**:
+```dax
+// In Power BI measure or button action
+update_employee(
+    [EmployeeID],
+    [EmployeeName], 
+    USERPRINCIPALNAME()  // Auto-captures user email
+)
+```
 
 ---
 

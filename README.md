@@ -76,7 +76,7 @@ This solution enables **interactive data writeback** from Power BI reports to on
 ## 📦 Repository Contents
 
 - **`artifacts/`** - Fabric artifact code and definitions
-  - `udf/` - User-Defined Function Python code
+  - `udf/` - User-Defined Function Python code (`EmployeeWritebackFunctions.py`)
   - `pipelines/` - Pipeline JSON definitions
   - `workspace-manifest.json` - Complete artifact inventory
   
@@ -98,9 +98,10 @@ This solution enables **interactive data writeback** from Power BI reports to on
 - Tables: `Employees`, `NeedsWriteback`
 
 ### 2. User-Defined Function: **EmployeeWritebackFunctions**
-- RESTful endpoint for Power BI writeback
-- Captures changes and writes to `NeedsWriteback`
-- Triggers sync pipeline
+- Python functions callable from Power BI
+- Three functions: `update_employee()`, `get_employee_info()`, `list_employees()`
+- Calls stored procedures on Fabric SQL Database
+- Returns formatted success/error messages
 
 ### 3. Pipelines
 - **Pipeline_IngestEmployees** - Initial data load from on-prem via gateway
