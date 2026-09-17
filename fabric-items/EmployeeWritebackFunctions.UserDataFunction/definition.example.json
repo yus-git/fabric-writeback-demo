@@ -1,0 +1,39 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/fabric/item/userDataFunction/definition/1.1.0/schema.json",
+  "runtime": "PYTHON",
+  "connectedDataSources": [
+    {
+      "alias": "HRData",
+      "artifactId": "<YOUR_SQL_DATABASE_ITEM_ID>",
+      "artifactType": "SqlDbNative",
+      "workspaceId": "<YOUR_WORKSPACE_ID>"
+    }
+  ],
+  "functions": [
+    {
+      "name": "get_employee_info",
+      "description": "Returns one employee as a display string.",
+      "isPublicEndpointEnabled": false
+    },
+    {
+      "name": "list_employees",
+      "description": "Lists employees for testing and diagnostics.",
+      "isPublicEndpointEnabled": false
+    },
+    {
+      "name": "update_employee",
+      "description": "Updates one employee in Fabric SQL Database.",
+      "isPublicEndpointEnabled": false
+    }
+  ],
+  "libraries": {
+    "public": [
+      {
+        "name": "fabric-user-data-functions",
+        "type": "PYPI",
+        "version": "1.0"
+      }
+    ],
+    "private": []
+  }
+}

@@ -13,7 +13,6 @@ venv/
 *.code-workspace
 
 # Fabric
-.platform
 .pbi/
 *.pbix
 *.pbip
